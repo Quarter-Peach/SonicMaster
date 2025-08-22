@@ -14,6 +14,12 @@ from diffusers import AutoencoderOobleck
 # Local imports (repo root is on sys.path when this file is executed)
 from model import TangoFlux
 
+hf_token = (
+    os.getenv("HF_TOKEN")
+    or os.getenv("HUGGINGFACE_TOKEN")
+    or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+)
+
 
 def parse_args():
     p = argparse.ArgumentParser("Single-sample inference for SonicMaster")
@@ -75,7 +81,7 @@ def main():
 
     # --------- Load VAE ----------
     vae = AutoencoderOobleck.from_pretrained(
-        "stabilityai/stable-audio-open-1.0", subfolder="vae"
+        "stabilityai/stable-audio-open-1.0", subfolder="vae",use_auth_token=hf_token,
     ).to(device)
     vae.eval()
 
