@@ -241,7 +241,7 @@ def main() -> None:
     shard_dir = os.path.join(args.out_dir, "shards")
     _file_barrier(shard_dir, "mkdir", rank=rank, world_size=world_size)
 
-    vae = AutoencoderOobleck.from_pretrained("stabilityai/stable-audio-open-1.0", subfolder="vae")
+    vae = AutoencoderOobleck.from_pretrained("/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/stable-audio-open-1.0/vae")
     vae.eval()
     vae.requires_grad_(False)
     vae.to(device)
