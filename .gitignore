@@ -1,0 +1,23 @@
+# 忽略特定的权重后缀
+*.pth
+*.pkl
+*.h5
+*.ckpt
+*.weights
+*.onnx
+
+# 忽略整个权重文件夹（假设你的权重都存在 checkpoints 目录下）
+checkpoints/
+models/temp/
+
+# 忽略日志文件和训练输出
+logs/
+results/
+*.log
+
+# 忽略服务器环境产生的临时文件
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+
+samples/
