@@ -10,3 +10,6 @@ librosa==0.11.0
 laion_clap==1.1.7
 tqdm
 wandb
+audiobox_aesthetics
+scikit-image
+openpyxl

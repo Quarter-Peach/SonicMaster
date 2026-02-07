@@ -20,7 +20,7 @@ def read_unique_ids(jsonl_path):
     with open(jsonl_path, "r") as f:
         for line in f:
             entry = json.loads(line)
-            clean_id = entry["original_id"] #if "original_id" in entry else entry["id"]
+            clean_id = entry["original_id"] if "original_id" in entry else entry["id"]
             if clean_id not in seen:
                 seen.add(clean_id)
                 unique_ids.append(clean_id)
@@ -44,25 +44,43 @@ def save_embeddings(output_path, embeddings, filenames):
     np.savez(output_path, embeddings=embeddings, filenames=filenames)
 
 if __name__ == "__main__":
-    jsonl_file = "/mastering/testset.jsonl"
-    clean_audio_folder = "/dataset/targets"
-    output_npz = "/mastering/processedclap/clean_embeddings.npz"
+    import argparse
 
-    os.makedirs(os.path.dirname(output_npz),exist_ok=True)
+    parser = argparse.ArgumentParser(description="Extract CLAP embeddings for clean audio")
+    parser.add_argument("--jsonl-file", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl")
+    parser.add_argument("--clean-audio-folder", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/origin_latent_flac")
+    parser.add_argument("--output-npz", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz")
+    parser.add_argument("--clap-ckpt", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/Yesterday_Work/EVAL_MODEL/clap-model/pytorch_model.bin", help="Path to CLAP checkpoint (optional)")
+    args = parser.parse_args()
+
+    os.makedirs(os.path.dirname(args.output_npz), exist_ok=True)
 
     print("Loading CLAP model...")
     model = CLAP_Module(enable_fusion=False)
-    model.load_ckpt()
+    if args.clap_ckpt:
+        try:
+            model.load_ckpt(ckpt=args.clap_ckpt)
+        except KeyError as e:
+            if 'text_branch.embeddings.position_ids' in str(e):
+                print("Handling KeyError in CLAP checkpoint loading...")
+                import torch
+                state_dict = torch.load(args.clap_ckpt, map_location='cpu')
+                if 'text_branch.embeddings.position_ids' in state_dict:
+                    del state_dict['text_branch.embeddings.position_ids']
+                model.load_state_dict(state_dict, strict=False)
+            else:
+                raise
+    else:
+        model.load_ckpt()
     # model.load_audio_model()  # <- REQUIRED
     model.eval()
 
-
     print("Reading unique audio IDs...")
-    unique_ids = read_unique_ids(jsonl_file)
+    unique_ids = read_unique_ids(args.jsonl_file)
 
     print(f"Found {len(unique_ids)} unique clean IDs.")
 
-    embeddings, filenames = extract_embeddings(model, unique_ids, clean_audio_folder)
-    save_embeddings(output_npz, embeddings, filenames)
+    embeddings, filenames = extract_embeddings(model, unique_ids, args.clean_audio_folder)
+    save_embeddings(args.output_npz, embeddings, filenames)
 
-    print(f"Saved {len(filenames)} clean embeddings to {output_npz}")
+    print(f"Saved {len(filenames)} clean embeddings to {args.output_npz}")

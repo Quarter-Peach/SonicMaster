@@ -1,5 +1,8 @@
+import argparse
 import os
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -32,7 +35,8 @@ def load_test_entries(jsonl_path):
             #     continue
             # if len(degradations) < 2:
             #     continue
-            entries.append((entry["id"], entry["original_id"]))
+            original_id = entry.get("original_id", entry["id"])
+            entries.append((entry["id"], original_id))
     return entries
 
 
@@ -75,29 +79,37 @@ def compute_fad(clean_embs, degraded_embs):
     sigma2 = np.cov(degraded_embs, rowvar=False)
     return frechet_distance(mu1, sigma1, mu2, sigma2)
 
-if __name__ == "__main__":
-    # Inputs
-    jsonl_file = "/testset_pt.jsonl"
-    clean_npz = "/mastering/processedclap/clean_embeddings.npz"
-    folders = [
-        "outputs/run1",
-        "outputs/run2"
-    ]
-    output_csv = "/evaluationfinal/fad_results_all.csv"
 
-    print("📦 Loading clean embeddings...")
-    clean_lookup = load_clean_embeddings(clean_npz)
 
-    print("📑 Loading testset entries...")
-    entries = load_test_entries(jsonl_file)
-
-    print("🎧 Loading CLAP model...")
+def prepare_clap_model(clap_ckpt=None):
     model = CLAP_Module(enable_fusion=False)
-    model.load_ckpt()
+    try:
+        if clap_ckpt:
+            model.load_ckpt(ckpt=clap_ckpt)
+        else:
+            model.load_ckpt()
+    except KeyError as e:
+        if 'text_branch.embeddings.position_ids' in str(e):
+            print("Handling KeyError in CLAP checkpoint loading...")
+            import torch
+
+            state_dict = torch.load(clap_ckpt, map_location='cpu')
+            if 'text_branch.embeddings.position_ids' in state_dict:
+                del state_dict['text_branch.embeddings.position_ids']
+            model.load_state_dict(state_dict, strict=False)
+        else:
+            raise
     model.eval()
+    return model
+
+
+def run_fad(jsonl_file, folders, clean_npz, output_csv=None, model=None, clap_ckpt=None):
+    clean_lookup = load_clean_embeddings(clean_npz)
+    entries = load_test_entries(jsonl_file)
+    if model is None:
+        model = prepare_clap_model(clap_ckpt)
 
     results = []
-
     for folder in folders:
         print(f"\n🚀 Processing: {folder}")
         clean_embs, degraded_embs = extract_degraded_embeddings(model, entries, folder, clean_lookup)
@@ -115,9 +127,31 @@ if __name__ == "__main__":
             "fad": fad_value
         })
 
-    # Save results
-    df = pd.DataFrame(results)
-    df.to_csv(output_csv, index=False)
+    if output_csv and results:
+        Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(results).to_csv(output_csv, index=False)
+        print(f"\n✅ All FAD results saved: {output_csv}")
+        print(pd.DataFrame(results))
 
-    print("\n✅ All FAD results saved:")
-    print(df)
+    return results
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Compute FAD for inference folders")
+    parser.add_argument("--jsonl-path", default="/testset_pt.jsonl")
+    parser.add_argument("--clean-embeddings", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz")
+    parser.add_argument(
+        "--folders",
+        nargs="+",
+        default=["outputs/run1", "outputs/run2"],
+        help="Paths to inference folders"
+    )
+    parser.add_argument("--output-csv", default="/evaluationfinal/fad_results_all.csv")
+    parser.add_argument("--clap-ckpt", help="Local CLAP checkpoint to avoid downloads")
+    args = parser.parse_args()
+    run_fad(
+        args.jsonl_path,
+        args.folders,
+        args.clean_embeddings,
+        args.output_csv,
+        clap_ckpt=args.clap_ckpt,
+    )

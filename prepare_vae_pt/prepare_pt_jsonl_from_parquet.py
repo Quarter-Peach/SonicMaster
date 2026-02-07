@@ -5,7 +5,7 @@ import io
 import os
 import tempfile
 import time
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple, Set
 
 from diffusers import AutoencoderOobleck
 import torchaudio
@@ -200,11 +200,30 @@ def _file_barrier(dir_path: str, tag: str, rank: int, world_size: int, timeout_s
             if time.time() - start > timeout_sec:
                 raise TimeoutError(f"Barrier timeout waiting for ranks (tag={tag})")
             time.sleep(0.5)
-    else:
-        while not os.path.exists(done):
-            if time.time() - start > timeout_sec:
-                raise TimeoutError(f"Barrier timeout waiting for done (tag={tag})")
-            time.sleep(0.5)
+
+
+def _load_id_filter(ids_file: Optional[str]) -> Optional[Set[str]]:
+    if not ids_file:
+        return None
+    if not os.path.exists(ids_file):
+        raise FileNotFoundError(f"ids_file not found: {ids_file}")
+    ids: Set[str] = set()
+    with open(ids_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("{"):
+                try:
+                    obj = json.loads(line)
+                    if isinstance(obj, dict) and "id" in obj:
+                        ids.add(str(obj["id"]))
+                        continue
+                except Exception:
+                    pass
+            ids.add(line)
+    return ids
+
 
 
 def main() -> None:
@@ -221,10 +240,42 @@ def main() -> None:
     parser.add_argument("--duration_sec", type=int, default=30)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--val_ratio", type=float, default=0.01)
+    parser.add_argument("--max_examples", type=int, default=-1, help="Limit number of assigned examples (rank-local).")
+    parser.add_argument("--skip_examples", type=int, default=0, help="Skip N assigned examples (rank-local).")
+    parser.add_argument(
+        "--ids_file",
+        type=str,
+        default="",
+        help="Optional file containing ids to process (one per line or jsonl with {id}).",
+    )
     parser.add_argument("--absolute_paths", action="store_true")
+    parser.add_argument(
+        "--write_jsonl_live",
+        action="store_true",
+        help="Append to train/val/test jsonl during processing (single-process only).",
+    )
+    parser.add_argument(
+        "--ignore_dist_env",
+        action="store_true",
+        help="Ignore RANK/WORLD_SIZE/LOCAL_RANK env vars and run as single process.",
+    )
+    parser.add_argument(
+        "--flush_jsonl",
+        action="store_true",
+        help="Flush jsonl shard files after each write (useful to observe progress during long runs).",
+    )
+    parser.add_argument(
+        "--log_every",
+        type=int,
+        default=200,
+        help="Log progress every N assigned examples (rank-local).",
+    )
     args = parser.parse_args()
 
-    rank, world_size, local_rank = _get_dist_info()
+    if args.ignore_dist_env:
+        rank, world_size, local_rank = 0, 1, 0
+    else:
+        rank, world_size, local_rank = _get_dist_info()
 
     if torch.cuda.is_available() and torch.cuda.device_count() > 0:
         torch.cuda.set_device(local_rank % torch.cuda.device_count())
@@ -241,6 +292,11 @@ def main() -> None:
     shard_dir = os.path.join(args.out_dir, "shards")
     _file_barrier(shard_dir, "mkdir", rank=rank, world_size=world_size)
 
+    id_filter = _load_id_filter(args.ids_file) if args.ids_file else None
+
+    if args.write_jsonl_live and world_size != 1:
+        raise RuntimeError("--write_jsonl_live 仅支持单进程运行（WORLD_SIZE=1）")
+
     vae = AutoencoderOobleck.from_pretrained("/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/stable-audio-open-1.0/vae")
     vae.eval()
     vae.requires_grad_(False)
@@ -250,9 +306,16 @@ def main() -> None:
     val_shard = os.path.join(shard_dir, f"val.rank{rank:03d}.jsonl")
     test_shard = os.path.join(shard_dir, f"test.rank{rank:03d}.jsonl")
 
-    ft = open(train_shard, "w", encoding="utf-8")
-    fv = open(val_shard, "w", encoding="utf-8")
-    fte = open(test_shard, "w", encoding="utf-8")
+    # Use line-buffering so that shard jsonl becomes visible immediately.
+    ft = open(train_shard, "w", encoding="utf-8", buffering=1)
+    fv = open(val_shard, "w", encoding="utf-8", buffering=1)
+    fte = open(test_shard, "w", encoding="utf-8", buffering=1)
+
+    live_train = live_val = live_test = None
+    if args.write_jsonl_live and is_main_process:
+        live_train = open(args.train_jsonl, "a", encoding="utf-8", buffering=1)
+        live_val = open(args.val_jsonl, "a", encoding="utf-8", buffering=1)
+        live_test = open(args.test_jsonl, "a", encoding="utf-8", buffering=1)
 
     def pick_split(example_id: str, split_value: str) -> str:
         s = (split_value or "train").lower()
@@ -267,8 +330,17 @@ def main() -> None:
     batch_meta = []
     global_idx = 0
 
+    # Simple counters for debugging.
+    n_seen = 0
+    n_assigned = 0
+    n_written_train = 0
+    n_written_val = 0
+    n_written_test = 0
+    n_errors = 0
+
     def flush_batch() -> None:
         nonlocal batch_inp, batch_gt, batch_meta
+        nonlocal n_written_train, n_written_val, n_written_test
         if not batch_inp:
             return
 
@@ -300,10 +372,25 @@ def main() -> None:
 
             if split_name == "test":
                 fte.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                n_written_test += 1
+                if args.flush_jsonl:
+                    fte.flush()
+                if live_test is not None:
+                    live_test.write(json.dumps(entry, ensure_ascii=False) + "\n")
             elif split_name == "val":
                 fv.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                n_written_val += 1
+                if args.flush_jsonl:
+                    fv.flush()
+                if live_val is not None:
+                    live_val.write(json.dumps(entry, ensure_ascii=False) + "\n")
             else:
                 ft.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                n_written_train += 1
+                if args.flush_jsonl:
+                    ft.flush()
+                if live_train is not None:
+                    live_train.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         batch_inp = []
         batch_gt = []
@@ -315,15 +402,25 @@ def main() -> None:
     rows = tqdm(rows, disable=not is_main_process, desc=f"Rank {rank} preparing")
 
     for row in rows:
+        n_seen += 1
         if (global_idx % world_size) != rank:
             global_idx += 1
             continue
         global_idx += 1
+        n_assigned += 1
+
+        if args.skip_examples > 0 and n_assigned <= args.skip_examples:
+            continue
+        if args.max_examples > 0 and (n_assigned - max(args.skip_examples, 0)) > args.max_examples:
+            break
 
         ex_id = row.get("id")
         if ex_id is None:
             continue
         ex_id = str(ex_id)
+
+        if id_filter is not None and ex_id not in id_filter:
+            continue
 
         if "input_flac" not in row or "gt_flac" not in row:
             raise KeyError("Parquet rows must contain input_flac and gt_flac")
@@ -348,14 +445,27 @@ def main() -> None:
             if len(batch_inp) >= args.batch_size:
                 flush_batch()
         except Exception as e:
+            n_errors += 1
             if is_main_process:
                 print(f"Error on id={ex_id}: {e}")
+
+        if args.log_every > 0 and (n_assigned % args.log_every) == 0 and is_main_process:
+            print(
+                f"[rank{rank}] seen={n_seen} assigned={n_assigned} "
+                f"written(train/val/test)={n_written_train}/{n_written_val}/{n_written_test} errors={n_errors}"
+            )
 
     flush_batch()
 
     ft.close()
     fv.close()
     fte.close()
+    if live_train is not None:
+        live_train.close()
+    if live_val is not None:
+        live_val.close()
+    if live_test is not None:
+        live_test.close()
 
     done_marker = os.path.join(shard_dir, f".encode_done.rank{rank:03d}")
     with open(done_marker, "w", encoding="utf-8") as f:
@@ -363,6 +473,10 @@ def main() -> None:
     _file_barrier(shard_dir, "encode_done", rank=rank, world_size=world_size)
 
     if is_main_process:
+        print(
+            f"[rank{rank}] FINAL seen={n_seen} assigned={n_assigned} "
+            f"written(train/val/test)={n_written_train}/{n_written_val}/{n_written_test} errors={n_errors}"
+        )
         def merge(out_path: str, pattern: str) -> None:
             _ensure_dir(os.path.dirname(out_path) or ".")
             with open(out_path, "w", encoding="utf-8") as fout:

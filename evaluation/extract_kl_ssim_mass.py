@@ -1,5 +1,8 @@
+import argparse
 import os
 import json
+from pathlib import Path
+
 import numpy as np
 import librosa
 from tqdm import tqdm
@@ -68,37 +71,50 @@ def evaluate_folder(folder, jsonl_path, target_root, out_dir):
         except Exception as e:
             print(f"Error processing pair {path1}, {path2}: {e}")
 
-    # Save raw values
-    np.save(os.path.join(out_dir, f"{folder}_kl_all.npy"), np.array(kl_scores))
-    np.save(os.path.join(out_dir, f"{folder}_ssim_all.npy"), np.array(ssim_scores))
+    if out_dir:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        np.save(os.path.join(out_dir, f"{folder}_kl_all.npy"), np.array(kl_scores))
+        np.save(os.path.join(out_dir, f"{folder}_ssim_all.npy"), np.array(ssim_scores))
 
     return np.mean(kl_scores), np.mean(ssim_scores)
 
-if __name__ == "__main__":
-    jsonl_path = "/testset_pt.jsonl"
-    target_root = "/dataset/targets"
-    output_dir = "/evaluationfinal/KL_SSIM"
-    os.makedirs(output_dir, exist_ok=True)
 
-    folders = [
-        "outputs/run1",
-        "outputs/run2"
-    ]
-
+def run_kl_ssim(jsonl_path, folders, target_root, output_dir=None, save_raw=True):
     summary = []
-
     for folder in folders:
         print(f"\n🚀 Processing: {folder}")
-        kl, ssim_val = evaluate_folder(folder, jsonl_path, target_root, output_dir)
+        kl, ssim_val = evaluate_folder(
+            folder,
+            jsonl_path,
+            target_root,
+            out_dir=output_dir if save_raw else None,
+        )
         summary.append({
-            "folder": folder,
+            "folder": os.path.basename(folder),
             "avg_kl": kl,
             "avg_ssim": ssim_val
         })
 
-    # Save final summary CSV
-    df = pd.DataFrame(summary)
-    df.to_csv(os.path.join(output_dir, "KL_SSIM_summary_all.csv"), index=False)
+    if output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame(summary)
+        df.to_csv(os.path.join(output_dir, "KL_SSIM_summary_all.csv"), index=False)
+        print(f"\n✅ KL/SSIM summary saved to: {os.path.join(output_dir, 'KL_SSIM_summary_all.csv')}")
+        print(df)
 
-    print("\n✅ All folders processed!")
-    print(df)
+    return summary
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Compute KL/SSIM metrics for inference folders")
+    parser.add_argument("--jsonl-path", default="/testset_pt.jsonl")
+    parser.add_argument("--target-root", default="/dataset/targets")
+    parser.add_argument(
+        "--folders",
+        nargs="+",
+        default=["outputs/run1", "outputs/run2"],
+        help="Paths to inference folders"
+    )
+    parser.add_argument("--output-dir", default="/evaluationfinal/KL_SSIM")
+    parser.add_argument("--save-raw", action="store_true", help="Save raw KL/SSIM arrays")
+    args = parser.parse_args()
+    run_kl_ssim(args.jsonl_path, args.folders, args.target_root, args.output_dir, save_raw=args.save_raw)

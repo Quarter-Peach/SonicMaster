@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument(
         "--model_ckpt",
         type=str,
-        default="/outputs/seed27full10sec/epoch_40",
+        default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/SonicMaster_ckpt/",
         help="Path to the model checkpoint.",
     )
 
@@ -211,10 +211,12 @@ def main():
 
     fs=44100
     filenames=[]
+    original_filenames=[]
     with open(jsonfile, "r", encoding="utf-8") as infile:
         for line in infile:
             a=json.loads(line)
             filenames.append(os.path.basename(a["location"]))
+            original_filenames.append(os.path.basename(a["original_location"]))
 
     infer_dataset = Text2AudioDataset(
         raw_datasets["infer"],
@@ -252,6 +254,8 @@ def main():
 
     inference_output_dir = os.path.join(output_dir, "inference_seed27full10sec_nocond40g1_ek100")
     os.makedirs(inference_output_dir, exist_ok=True)
+    original_audio_dir = os.path.join(output_dir, "original_latents")
+    os.makedirs(original_audio_dir, exist_ok=True)
     for step, batch in enumerate(infer_dataloader):
         # inference_batch = next(iter(infer_dataloader))
         # with accelerator.accumulate(model) and torch.no_grad():
@@ -292,13 +296,26 @@ def main():
                 solver="Euler", #Euler or rk4
             )
             infer_outputs.append(inferred_result)
-            wave_list=[]
+            decoded_wave = vae.decode(inferred_result.transpose(2, 1)).sample.cpu()
+            original_wave = vae.decode(audio_latent.transpose(2, 1)).sample.cpu()
 
-            wave = vae.decode(inferred_result.transpose(2, 1)).sample.cpu()
-            wave_list.append(wave)
+            for k in range(decoded_wave.shape[0]):
+                decompressed_name = filenames[i].replace(".pt", ".flac")
+                sf.write(
+                    os.path.join(inference_output_dir, decompressed_name),
+                    decoded_wave[k].numpy().T,
+                    samplerate=fs,
+                    format='FLAC',
+                )
 
-            for k in range(len(wave_list[0])):
-                sf.write(os.path.join(inference_output_dir,filenames[i].replace(".pt", ".flac")), wave_list[0][k].numpy().T, samplerate=fs, format='FLAC')
+                original_name = original_filenames[i].replace(".pt", ".flac")
+                sf.write(
+                    os.path.join(original_audio_dir, original_name),
+                    original_wave[k].numpy().T,
+                    samplerate=fs,
+                    format='FLAC',
+                )
+
                 i+=1
 
     # if accelerator.is_main_process:

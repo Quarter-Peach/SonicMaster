@@ -1,5 +1,8 @@
+import argparse
 import os
 import json
+from pathlib import Path
+
 import pandas as pd
 from audiobox_aesthetics.infer import initialize_predictor
 from tqdm import tqdm
@@ -27,6 +30,10 @@ def categorize_and_score(folder, jsonl_path):
 
             file_path = os.path.join(folder, f"{sample_id}"+".flac")
 
+            if not os.path.exists(file_path):
+                print(f"⚠️ File not found: {file_path}")
+                continue
+
             try:
                 result = predictor.forward([{"path": file_path}])[0]
                 group_scores[group].append(result)
@@ -40,27 +47,36 @@ def categorize_and_score(folder, jsonl_path):
         for k, v in group_scores.items()
     }
 
-if __name__ == "__main__":
-    jsonl_path = "/testset_pt.jsonl"
-    output_csv = "/evaluationfinal/aesthetic_summary_models.csv"
 
-    folders = [
-        "outputs/run1",
-        "outputs/run2"
-    ]
-
-    summary = []
-
+def run_aesthetics(jsonl_path, folders):
+    rows = []
     for folder in folders:
-        print(f"\n🚀 Processing: {folder}")
         grouped_results = categorize_and_score(folder, jsonl_path)
         for group_name, metrics in grouped_results.items():
-            if metrics:  # skip if no results
-                row = {"folder": os.path.basename(folder), "group": group_name}
-                row.update(metrics)
-                summary.append(row)
+            if not metrics:
+                continue
+            row = {"folder": os.path.basename(folder), "group": group_name}
+            row.update(metrics)
+            rows.append(row)
+    return rows
 
-    df = pd.DataFrame(summary)
-    df.to_csv(output_csv, index=False)
-    print(f"\n✅ Saved grouped aesthetic scores to: {output_csv}")
-    print(df)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Compute aesthetic scores for inference folders")
+    parser.add_argument("--jsonl-path", default="/testset_pt.jsonl")
+    parser.add_argument("--output-csv", default="/evaluationfinal/aesthetic_summary_models.csv")
+    parser.add_argument(
+        "--folders",
+        nargs="+",
+        default=["outputs/run1", "outputs/run2"],
+        help="Paths to inference output folders"
+    )
+    args = parser.parse_args()
+    rows = run_aesthetics(args.jsonl_path, args.folders)
+    if not rows:
+        print("⚠️ No aesthetic results generated.")
+    else:
+        df = pd.DataFrame(rows)
+        Path(args.output_csv).parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(args.output_csv, index=False)
+        print(f"\n✅ Saved grouped aesthetic scores to: {args.output_csv}")
+        print(df)

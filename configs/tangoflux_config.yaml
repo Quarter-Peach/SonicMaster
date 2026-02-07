@@ -1,12 +1,12 @@
 
 # Absolute paths for different resources
 paths:
-  train_file: "/mastering/FINAL_DATA2/trainset_pt.jsonl"
-  val_file: "/mastering/FINAL_DATA2/valset_pt.jsonl"
-  test_file: "/mastering/FINAL_DATA2/testset_pt.jsonl"
-  infer_file: "/mastering/FINAL_DATA2/testset_pt.jsonl"
+  train_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/trainset_pt.jsonl"
+  val_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/valset_pt.jsonl"
+  test_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl"
+  infer_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl"
   resume_from_checkpoint: ""
-  output_dir: "outputs/"
+  output_dir: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output"
 
 # Training-related parameters
 training:
@@ -31,7 +31,12 @@ model:
   uncondition: false
   text_encoder_name: "google/flan-t5-large"
   
-
+evaluation:
+  folders:
+    - "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/inference_seed27full10sec_nocond40g1_ek100"
+  clean_targets: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/origin_latent_flac"
+  clean_embeddings: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz"
+  summary_output: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/eval_summary_output"
 
 
 

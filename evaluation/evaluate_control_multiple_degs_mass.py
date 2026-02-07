@@ -1,8 +1,10 @@
 
+import argparse
 import pyroomacoustics as pra
 
 import json
 import os
+from pathlib import Path
 from tqdm import tqdm
 import soundfile as sf
 import numpy as np
@@ -14,8 +16,6 @@ from scipy.signal import stft
 import csv
 import pandas as pd
 
-
-metrics_by_degradation = defaultdict(list)
 
 
 # === CONFIG ===
@@ -514,6 +514,41 @@ def summarize_metrics(metrics_by_degradation):
     return summary, summary_multi
 
 
+def flatten_control_summary(summary, summary_multi, folder_name):
+    rows = []
+    for degradation, metrics in summary.items():
+        row = {"folder": folder_name, "degradation": degradation}
+        row.update(metrics)
+        rows.append(row)
+
+    for degradation, metrics in summary_multi.items():
+        row = {"folder": folder_name, "degradation": degradation}
+        row.update(metrics)
+        rows.append(row)
+
+    return rows
+
+
+def run_control_evaluation(jsonl_path, folders, excel_output=None, save_excel=True):
+    all_rows = []
+    for folder in folders:
+        print(f"\n🚀 Running evaluation for: {folder}")
+        summary, summary_multi = process_jsonl(jsonl_path, folder)
+        folder_name = os.path.basename(folder)
+        all_rows.extend(flatten_control_summary(summary, summary_multi, folder_name))
+
+    df = pd.DataFrame(all_rows)
+    if save_excel and excel_output and not df.empty:
+        Path(excel_output).parent.mkdir(parents=True, exist_ok=True)
+        with pd.ExcelWriter(excel_output) as writer:
+            for folder, group_df in df.groupby("folder"):
+                sheet_name = folder[:31]
+                group_df.drop(columns=["folder"], errors="ignore").to_excel(writer, sheet_name=sheet_name, index=False)
+        print(f"\n✅ All attribute results saved to Excel: {excel_output}")
+
+    return df
+
+
 
 # === MAIN PROCESSING LOOP ===
 def process_jsonl(jsonl_path, output_dir):
@@ -524,7 +559,9 @@ def process_jsonl(jsonl_path, output_dir):
         for line in tqdm(f):
             entry = json.loads(line)
             file_id = entry["id"]
-            degradations = entry["degradations"]
+            degradations = entry.get("degradations", [])
+            if degradations is None:
+                print(f"⚠️⚠️⚠️ Skipping entry with null degradations: {file_id}")
 
 
             # output_dir
@@ -579,42 +616,15 @@ def process_jsonl(jsonl_path, output_dir):
 
 
 if __name__ == "__main__":
-    jsonref = "/testset_pt.jsonl"
-    output_csv = "/evaluation/control/attribute_metrics_all.xlsx"
-
-    folders = [
-        "outputs/run1",
-        "outputs/run2"
-    ]
-
-    all_results = []
-
-    for folder in folders:
-        print(f"\n🚀 Running evaluation for: {folder}")
-        summary, summary_multi = process_jsonl(jsonref, folder)
-
-        for d, m in summary.items():
-            m["folder"] = os.path.basename(folder)
-            m["degradation"] = d
-            all_results.append(m)
-
-        for d, m in summary_multi.items():
-            m["folder"] = os.path.basename(folder)
-            m["degradation"] = d
-            all_results.append(m)
-
-    # ✅ Write to Excel: one sheet per folder, rows = degradations
-    with pd.ExcelWriter(output_csv) as writer:
-        df_all = pd.DataFrame(all_results)
-        for folder, group_df in df_all.groupby("folder"):
-            sheet_name = folder[:31]  # Excel limits sheet names to 31 chars
-            group_df.drop(columns=["folder"]).to_excel(writer, sheet_name=sheet_name, index=False)
-
-    print(f"\n✅ All attribute results saved to Excel: {output_csv}")
-
-
-        # # Save to one big CSV
-    # import pandas as pd
-    # df = pd.DataFrame(all_results)
-    # df.to_csv(output_csv, index=False)
-    # print(f"\n✅ Evaluation summary saved to {output_csv}")
+    parser = argparse.ArgumentParser(description="Compute control metrics for inference outputs")
+    parser.add_argument("--jsonl-path", default="/testset_pt.jsonl")
+    parser.add_argument(
+        "--folders",
+        nargs="+",
+        default=["outputs/run1", "outputs/run2"],
+        help="Paths to inference output folders"
+    )
+    parser.add_argument("--excel-output", default="/evaluation/control/attribute_metrics_all.xlsx")
+    parser.add_argument("--skip-excel", action="store_true", help="Do not write the Excel summary")
+    args = parser.parse_args()
+    run_control_evaluation(args.jsonl_path, args.folders, excel_output=args.excel_output, save_excel=not args.skip_excel)
