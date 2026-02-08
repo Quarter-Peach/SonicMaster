@@ -41,7 +41,7 @@ def evaluate_folder(folder, jsonl_path, target_root, out_dir):
     with open(jsonl_path, "r") as f:
         entries = [json.loads(line) for line in f]
 
-    for entry in tqdm(entries, desc=f"Folder: {folder}"):
+    for i, entry in enumerate(tqdm(entries, desc=f"Folder: {folder}")):
         audio_id = entry.get("id")
         original_id = entry.get("original_id")
         degradations = entry.get("degradations", [])
@@ -51,11 +51,21 @@ def evaluate_folder(folder, jsonl_path, target_root, out_dir):
         # if len(degradations) < 2:
         #     continue
 
+        # Handle missing original_id by using audio_id directly (files have matching names in both folders)
+        if original_id is None:
+            original_id = audio_id
+
         path1 = os.path.join(folder, f"{audio_id}.flac")
         path2 = os.path.join(target_root, f"{original_id}.flac")
 
-        if not (os.path.exists(path1) and os.path.exists(path2)):
-            print(f"Skipping missing file: {path1} or {path2}")
+        path1_exists = os.path.exists(path1)
+        path2_exists = os.path.exists(path2)
+        
+        if not (path1_exists and path2_exists):
+            if i < 3:  # Only print first 3 entries for debugging
+                print(f"\nDebug entry {i}: id={audio_id}, original_id={original_id}")
+                print(f"  path1={path1} (exists={path1_exists})")
+                print(f"  path2={path2} (exists={path2_exists})")
             continue
 
         try:

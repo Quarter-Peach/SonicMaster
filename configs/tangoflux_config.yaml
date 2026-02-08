@@ -6,7 +6,7 @@ paths:
   test_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl"
   infer_file: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl"
   resume_from_checkpoint: ""
-  output_dir: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output"
+  output_dir: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output"
 
 # Training-related parameters
 training:
@@ -35,6 +35,7 @@ evaluation:
   folders:
     - "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/inference_seed27full10sec_nocond40g1_ek100"
   clean_targets: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/origin_latent_flac"
+  degraded_root: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/inference_seed27full10sec_nocond40g1_ek100"
   clean_embeddings: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz"
   summary_output: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/eval_summary_output"
 

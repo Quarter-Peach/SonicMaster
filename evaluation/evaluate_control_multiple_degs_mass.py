@@ -529,11 +529,11 @@ def flatten_control_summary(summary, summary_multi, folder_name):
     return rows
 
 
-def run_control_evaluation(jsonl_path, folders, excel_output=None, save_excel=True):
+def run_control_evaluation(jsonl_path, folders, clean_targets_root=None, degraded_root=None, excel_output=None, save_excel=True):
     all_rows = []
     for folder in folders:
         print(f"\n🚀 Running evaluation for: {folder}")
-        summary, summary_multi = process_jsonl(jsonl_path, folder)
+        summary, summary_multi = process_jsonl(jsonl_path, folder, clean_targets_root, degraded_root)
         folder_name = os.path.basename(folder)
         all_rows.extend(flatten_control_summary(summary, summary_multi, folder_name))
 
@@ -551,25 +551,45 @@ def run_control_evaluation(jsonl_path, folders, excel_output=None, save_excel=Tr
 
 
 # === MAIN PROCESSING LOOP ===
-def process_jsonl(jsonl_path, output_dir):
+def process_jsonl(jsonl_path, output_dir, clean_targets_root=None, degraded_root=None):
     metrics_by_degradation = defaultdict(list)
     fs=44100
     i=0
+    
+    print(f"Debug: clean_targets_root={clean_targets_root}, degraded_root={degraded_root}, output_dir={output_dir}")
+    
     with open(jsonl_path, "r") as f:
         for line in tqdm(f):
             entry = json.loads(line)
-            file_id = entry["id"]
+            audio_id = entry.get("id")
+            original_id = entry.get("original_id")
             degradations = entry.get("degradations", [])
             if degradations is None:
-                print(f"⚠️⚠️⚠️ Skipping entry with null degradations: {file_id}")
+                print(f"⚠️⚠️⚠️ Skipping entry with null degradations: {audio_id}")
+                continue
 
+            # Handle missing original_id by using audio_id directly (files have matching names in both folders)
+            if original_id is None:
+                original_id = audio_id
 
-            # output_dir
-            clean_path = entry["original_location"].replace("targetspt","targets").replace(".pt",".flac")
-            degraded_path = entry["location"].replace("degradspt","degrads").replace(".pt",".flac")
+            # Construct file paths from folders
+            clean_path = os.path.join(clean_targets_root, f"{original_id}.flac") if clean_targets_root else None
+            degraded_path = os.path.join(degraded_root, f"{original_id}.flac") if degraded_root else None
+            output_path = os.path.join(output_dir, f"{audio_id}.flac")
 
-            filename = os.path.basename(degraded_path)
-            output_path = os.path.join(output_dir, filename)
+            # Check if all required files exist
+            missing_files = []
+            if clean_path and not os.path.exists(clean_path):
+                missing_files.append(f"clean: {clean_path}")
+            if degraded_path and not os.path.exists(degraded_path):
+                missing_files.append(f"degraded: {degraded_path}")
+            if not os.path.exists(output_path):
+                missing_files.append(f"output: {output_path}")
+            
+            if missing_files:
+                if i < 3:  # Print first 3 missing files for debugging
+                    print(f"Missing files for {audio_id}: {', '.join(missing_files)}")
+                continue
 
 
 
@@ -594,7 +614,7 @@ def process_jsonl(jsonl_path, output_dir):
                 degraded = load_audio(degraded_path,fs,mono=True)
                 output = load_audio(output_path,fs,mono=True)
             except Exception as e:
-                print(f"Failed to load audio for {file_id}: {e}")
+                print(f"Failed to load audio for {audio_id}: {e}")
                 continue
 
             result = evaluate_sample(clean, degraded, output, degradations, clean_stereo, degraded_stereo, output_stereo)

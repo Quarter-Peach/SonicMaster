@@ -38,6 +38,7 @@ def run_full_suite(
     folders,
     summary_dir,
     clean_targets,
+    degraded_root,
     clean_embeddings,
     control_excel,
     aesthetic_csv,
@@ -65,6 +66,7 @@ def run_full_suite(
         raise ValueError("Need at least one evaluation folder")
 
     clean_targets_path = clean_targets or eval_cfg.get("clean_targets")
+    degraded_path = degraded_root or eval_cfg.get("degraded_root")
     clean_embeddings_path = clean_embeddings or eval_cfg.get("clean_embeddings")
 
     if clean_embeddings_path and not Path(clean_embeddings_path).exists():
@@ -73,6 +75,9 @@ def run_full_suite(
     if clean_targets_path and not Path(clean_targets_path).exists():
         print(f"⚠️ Clean target folder missing: {clean_targets_path}, skipping KL/SSIM")
         clean_targets_path = None
+    if degraded_path and not Path(degraded_path).exists():
+        print(f"⚠️ Degraded folder missing: {degraded_path}, skipping control")
+        degraded_path = None
     summary_dir = Path(summary_dir or eval_cfg.get("summary_output") or "evaluation/results")
     summary_dir.mkdir(parents=True, exist_ok=True)
     control_excel_path = Path(control_excel) if control_excel else summary_dir / "control_metrics.xlsx"
@@ -136,6 +141,8 @@ def run_full_suite(
         control_df = run_control_evaluation(
             str(jsonl_path),
             final_folders,
+            clean_targets_root=clean_targets_path,
+            degraded_root=degraded_path,
             excel_output=str(control_excel_path) if not control_skip_excel else None,
             save_excel=not control_skip_excel,
         )
@@ -171,6 +178,7 @@ def main():
     parser.add_argument("--folders", nargs="+", help="Evaluation folders (overrides config)")
     parser.add_argument("--summary-dir", help="Directory for aggregated outputs")
     parser.add_argument("--clean-targets", help="Clean audio root for KL/SSIM")
+    parser.add_argument("--degraded-root", help="Degraded audio root for control evaluation")
     parser.add_argument("--clean-embeddings", help="Path to the precomputed clean CLAP embeddings")
     parser.add_argument("--control-excel", help="Excel path for control evaluation")
     parser.add_argument("--aesthetic-csv", help="CSV path for aesthetics summary")
@@ -196,6 +204,7 @@ def main():
         folders=args.folders,
         summary_dir=args.summary_dir,
         clean_targets=args.clean_targets,
+        degraded_root=args.degraded_root,
         clean_embeddings=args.clean_embeddings,
         control_excel=args.control_excel,
         aesthetic_csv=args.aesthetic_csv,
