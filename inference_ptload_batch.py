@@ -252,10 +252,12 @@ def main():
     model.eval()
     i=0
 
-    inference_output_dir = os.path.join(output_dir, "inference_seed27full10sec_nocond40g1_ek100")
+    inference_output_dir = os.path.join(output_dir, "restored_audio")
     os.makedirs(inference_output_dir, exist_ok=True)
-    original_audio_dir = os.path.join(output_dir, "original_latents")
+    original_audio_dir = os.path.join(output_dir, "original_audio")
     os.makedirs(original_audio_dir, exist_ok=True)
+    degraded_audio_dir = os.path.join(output_dir, "degraded_audio")
+    os.makedirs(degraded_audio_dir, exist_ok=True)
     for step, batch in enumerate(infer_dataloader):
         # inference_batch = next(iter(infer_dataloader))
         # with accelerator.accumulate(model) and torch.no_grad():
@@ -298,6 +300,7 @@ def main():
             infer_outputs.append(inferred_result)
             decoded_wave = vae.decode(inferred_result.transpose(2, 1)).sample.cpu()
             original_wave = vae.decode(audio_latent.transpose(2, 1)).sample.cpu()
+            degraded_wave = vae.decode(deg_audio_latent.transpose(2, 1)).sample.cpu()
 
             for k in range(decoded_wave.shape[0]):
                 decompressed_name = filenames[i].replace(".pt", ".flac")
@@ -315,7 +318,15 @@ def main():
                     samplerate=fs,
                     format='FLAC',
                 )
+                degraded_name = filenames[i].replace(".pt", ".flac")
+                sf.write(
+                    os.path.join(degraded_audio_dir, degraded_name),
+                    degraded_wave[k].numpy().T,
+                    samplerate=fs,
+                    format='FLAC',
+                )
 
+                
                 i+=1
 
     # if accelerator.is_main_process:

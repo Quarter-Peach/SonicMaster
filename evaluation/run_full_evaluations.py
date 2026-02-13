@@ -45,7 +45,7 @@ def run_full_suite(
     fad_csv,
     kl_output_dir,
     summary_excel,
-    skip_control,
+    run_control,
     skip_aesthetics,
     skip_fad,
     skip_kl,
@@ -137,7 +137,7 @@ def run_full_suite(
             else:
                 print("⚠️ No KL/SSIM metrics produced")
 
-    if not skip_control:
+    if run_control:
         control_df = run_control_evaluation(
             str(jsonl_path),
             final_folders,
@@ -185,7 +185,7 @@ def main():
     parser.add_argument("--fad-csv", help="CSV path for FAD summary")
     parser.add_argument("--kl-output-dir", help="Directory for KL/SSIM arrays and summary")
     parser.add_argument("--summary-excel", help="Workbook that holds per-type sheets")
-    parser.add_argument("--skip-control", action="store_true")
+    parser.add_argument("--run-control", action="store_true", help="Run the control evaluation (skipped by default)")
     parser.add_argument("--skip-aesthetics", action="store_true")
     parser.add_argument("--skip-fad", action="store_true")
     parser.add_argument("--skip-kl", action="store_true")
@@ -211,7 +211,7 @@ def main():
         fad_csv=args.fad_csv,
         kl_output_dir=args.kl_output_dir,
         summary_excel=args.summary_excel,
-        skip_control=args.skip_control,
+        run_control=args.run_control,
         skip_aesthetics=args.skip_aesthetics,
         skip_fad=args.skip_fad,
         skip_kl=args.skip_kl,

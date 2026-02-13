@@ -33,11 +33,11 @@ model:
   
 evaluation:
   folders:
-    - "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/inference_seed27full10sec_nocond40g1_ek100"
-  clean_targets: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/origin_latent_flac"
-  degraded_root: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/inference_seed27full10sec_nocond40g1_ek100"
-  clean_embeddings: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz"
-  summary_output: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/eval_summary_output"
+    - "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/restored_audio"
+  clean_targets: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/original_audio"
+  degraded_root: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/degraded_audio"
+  clean_embeddings: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings_full_1.npz"
+  summary_output: "/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/eval_summary"
 
 
 

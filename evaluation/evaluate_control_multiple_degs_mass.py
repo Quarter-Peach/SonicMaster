@@ -529,7 +529,7 @@ def flatten_control_summary(summary, summary_multi, folder_name):
     return rows
 
 
-def run_control_evaluation(jsonl_path, folders, clean_targets_root=None, degraded_root=None, excel_output=None, save_excel=True):
+def run_control_evaluation(jsonl_path, folders, clean_targets_root=None, degraded_root=None, csv_output=None, save_csv=True):
     all_rows = []
     for folder in folders:
         print(f"\n🚀 Running evaluation for: {folder}")
@@ -538,13 +538,11 @@ def run_control_evaluation(jsonl_path, folders, clean_targets_root=None, degrade
         all_rows.extend(flatten_control_summary(summary, summary_multi, folder_name))
 
     df = pd.DataFrame(all_rows)
-    if save_excel and excel_output and not df.empty:
-        Path(excel_output).parent.mkdir(parents=True, exist_ok=True)
-        with pd.ExcelWriter(excel_output) as writer:
-            for folder, group_df in df.groupby("folder"):
-                sheet_name = folder[:31]
-                group_df.drop(columns=["folder"], errors="ignore").to_excel(writer, sheet_name=sheet_name, index=False)
-        print(f"\n✅ All attribute results saved to Excel: {excel_output}")
+    if save_csv and csv_output and not df.empty:
+        Path(csv_output).parent.mkdir(parents=True, exist_ok=True)
+        # Save as a single CSV for easy viewing
+        df.to_csv(csv_output, index=False)
+        print(f"\n✅ All attribute results saved to CSV: {csv_output}")
 
     return df
 
@@ -637,14 +635,23 @@ def process_jsonl(jsonl_path, output_dir, clean_targets_root=None, degraded_root
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute control metrics for inference outputs")
-    parser.add_argument("--jsonl-path", default="/testset_pt.jsonl")
+    parser.add_argument("--jsonl-path", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl")
     parser.add_argument(
         "--folders",
         nargs="+",
-        default=["outputs/run1", "outputs/run2"],
+        default=["/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/restored_audio", ],
         help="Paths to inference output folders"
     )
-    parser.add_argument("--excel-output", default="/evaluation/control/attribute_metrics_all.xlsx")
-    parser.add_argument("--skip-excel", action="store_true", help="Do not write the Excel summary")
+    parser.add_argument("--clean-targets-root",default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/original_audio", help="Path to clean (GT) audio folder")
+    parser.add_argument("--degraded-root",default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/degraded_audio", help="Path to un-restored degraded audio folder")
+    parser.add_argument("--csv-output", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/eval_summary/attribute_metrics_all.csv")
+    parser.add_argument("--skip-csv", action="store_true", help="Do not write the CSV summary")
     args = parser.parse_args()
-    run_control_evaluation(args.jsonl_path, args.folders, excel_output=args.excel_output, save_excel=not args.skip_excel)
+    run_control_evaluation(
+        args.jsonl_path, 
+        args.folders, 
+        clean_targets_root=args.clean_targets_root,
+        degraded_root=args.degraded_root,
+        csv_output=args.csv_output, 
+        save_csv=not args.skip_csv
+    )

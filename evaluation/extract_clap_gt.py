@@ -48,8 +48,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Extract CLAP embeddings for clean audio")
     parser.add_argument("--jsonl-file", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/DATA_AND_CKPT/FINAL_DATA2/testset_pt.jsonl")
-    parser.add_argument("--clean-audio-folder", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Audio_output/origin_latent_flac")
-    parser.add_argument("--output-npz", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings.npz")
+    parser.add_argument("--clean-audio-folder", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/Full_Audio_output/original_audio")
+    parser.add_argument("--output-npz", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/RESULT/clean_embeddings_full_1.npz")
     parser.add_argument("--clap-ckpt", default="/inspire/hdd/global_user/chenxie-25019/HaoQiu/Yesterday_Work/EVAL_MODEL/clap-model/pytorch_model.bin", help="Path to CLAP checkpoint (optional)")
     args = parser.parse_args()
 
